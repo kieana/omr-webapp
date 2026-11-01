@@ -213,42 +213,54 @@ def _find_note_x_start(
     Estimate the X position where actual note content begins (i.e. after the
     clef, key signature, and time signature).
 
-    We scan the column-density profile of the first treble staff zone and look
-    for the first gap (≥ 8 consecutive low-density columns) that occurs after
-    x = 80. The note content starts immediately after that gap.
+    Strategy:
+      1. Scan column-density profile of the first treble staff zone.
+      2. Find the first gap of ≥ 6 consecutive low-density columns after x=60.
+      3. Return the START of that gap (not the end) — so the first note
+         immediately to the right of the clef/key/time block is included.
+      4. Apply a half-spacing safety margin so we don't cut into the last
+         accidental of the key signature.
 
-    Falls back to 10× spacing if no gap is detected.
+    Falls back to 7× spacing if no gap is detected.
     """
     if not staves:
-        return int(spacing * 10)
+        return int(spacing * 7)
 
-    # Use the first available treble staff (even index 0)
     staff = staves[0]
     margin_px = int(spacing * 1.5)
     y_top = max(0, staff[0] - margin_px)
     y_bot = min(notes_only.shape[0], staff[4] + margin_px)
 
-    roi = notes_only[y_top:y_bot, 80:min(notes_only.shape[1], 450)]
+    # Scan from x=60 (past the brace/barline) up to x=400
+    x_scan_start = 60
+    roi = notes_only[y_top:y_bot, x_scan_start:min(notes_only.shape[1], 400)]
     if roi.size == 0:
-        return int(spacing * 10)
+        return int(spacing * 7)
 
     col_sums = np.sum(roi, axis=0).astype(np.float32)
     local_max = float(np.max(col_sums))
     if local_max == 0:
-        return int(spacing * 10)
+        return int(spacing * 7)
 
     gap_threshold = local_max * 0.15
     gap_run = 0
-    for x in range(len(col_sums)):
-        if col_sums[x] < gap_threshold:
+    gap_start = -1          # absolute x where the gap begins
+    for i in range(len(col_sums)):
+        abs_x = i + x_scan_start
+        if col_sums[i] < gap_threshold:
+            if gap_run == 0:
+                gap_start = abs_x   # record where this gap started
             gap_run += 1
-            if gap_run >= 8 and (x + 80) > 150:
-                # x+80 is absolute position; the gap ends here, notes follow
-                return x + 80 + gap_run
+            if gap_run >= 6 and abs_x > 120:
+                # Return the START of the gap: this is where the header ends.
+                # Subtract half a spacing so we don't trim the last accidental.
+                cutoff = max(gap_start - int(spacing * 0.5), x_scan_start)
+                return cutoff
         else:
             gap_run = 0
+            gap_start = -1
 
-    return int(spacing * 10)
+    return int(spacing * 7)
 
 
 def _dedup_note_heads(
