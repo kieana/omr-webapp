@@ -25,6 +25,7 @@ import base64
 from flask import Flask, render_template, request, jsonify, send_file
 from omr.pipeline import analyze_image
 from omr.export import notes_to_stream, stream_to_midi_bytes, stream_to_musicxml_bytes
+from omr.render import notes_to_svg
 import cv2
 import numpy as np
 
@@ -95,7 +96,23 @@ def analyze():
     annotated_b64 = _build_annotated_image(image_bytes, result)
     result["annotated_image"] = annotated_b64
 
+    # Generate reconstructed score SVG (inline — no extra round-trip needed)
+    result["score_svg"] = notes_to_svg(result.get("notes", []))
+
     return jsonify(result)
+
+
+@app.route("/render", methods=["POST"])
+def render_score():
+    """
+    POST JSON {"notes": [...], "notes_per_bar": 4}
+    Returns the SVG as text/svg+xml — useful for re-rendering after manual edits.
+    """
+    data = request.get_json(silent=True) or {}
+    notes = data.get("notes", [])
+    notes_per_bar = int(data.get("notes_per_bar", 4))
+    svg = notes_to_svg(notes, notes_per_bar=notes_per_bar)
+    return svg, 200, {"Content-Type": "image/svg+xml; charset=utf-8"}
 
 
 @app.route("/export/midi", methods=["POST"])

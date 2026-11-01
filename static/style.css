@@ -262,3 +262,82 @@ footer {
   border-color: var(--accent);
   color: var(--accent);
 }
+
+/* ── Partitura Reconstruída ── */
+#score-wrapper {
+  margin-top: 1.6rem;
+}
+
+#score-wrapper h3 {
+  margin-bottom: .4rem;
+}
+
+#score-wrapper .hint {
+  font-size: .83rem;
+  color: var(--muted);
+  margin-bottom: .8rem;
+  line-height: 1.5;
+}
+
+.score-controls {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  flex-wrap: wrap;
+  margin-bottom: .8rem;
+}
+
+.score-controls label {
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+.score-controls input[type="number"] {
+  width: 60px;
+  padding: .3rem .5rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: .88rem;
+}
+
+.score-controls button {
+  padding: .3rem .85rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: .85rem;
+  cursor: pointer;
+  transition: border-color .2s;
+}
+
+.score-controls button:hover {
+  border-color: var(--accent);
+}
+
+.score-controls a {
+  font-size: .85rem;
+  color: var(--success);
+  text-decoration: none;
+  padding: .3rem .6rem;
+  border: 1px solid var(--success);
+  border-radius: 6px;
+  transition: opacity .2s;
+}
+
+.score-controls a:hover { opacity: .75; }
+
+.score-scroll {
+  overflow-x: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem;
+}
+
+.score-scroll svg {
+  display: block;
+  min-width: 100%;
+}

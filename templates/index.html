@@ -69,9 +69,23 @@
       <!-- Export status (automático) -->
       <div id="export-status" hidden></div>
 
+      <!-- Reconstructed score SVG -->
+      <div id="score-wrapper" hidden>
+        <h3>Partitura Reconstruída</h3>
+        <p class="hint">O que o pipeline "viu" — cada nota detectada redesenhada na posição e altura mapeadas.
+          Compare com a imagem original abaixo para identificar erros.</p>
+        <div class="score-controls">
+          <label for="notes-per-bar">Notas por compasso:</label>
+          <input type="number" id="notes-per-bar" value="4" min="1" max="16" step="1" />
+          <button id="rerender-btn">↺ Rerenderizar</button>
+          <a id="svg-download" href="#" download="partitura_reconstruida.svg">⬇ Baixar SVG</a>
+        </div>
+        <div id="score-svg-container" class="score-scroll"></div>
+      </div>
+
       <!-- Annotated image -->
       <div id="annotated-wrapper" hidden>
-        <h3>Imagem Anotada</h3>
+        <h3>Imagem Anotada (Original + Marcações)</h3>
         <div class="image-wrapper">
           <img id="annotated-img" src="" alt="Partitura anotada com notas detectadas" />
         </div>
