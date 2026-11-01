@@ -23,7 +23,7 @@ _ensure_requirements()
 import io
 import base64
 from flask import Flask, render_template, request, jsonify, send_file
-from omr.pipeline import analyze_image
+from omr.pipeline import analyze_image, analyze_image_debug
 from omr.export import notes_to_stream, stream_to_midi_bytes, stream_to_musicxml_bytes
 from omr.render import notes_to_svg
 import cv2
@@ -75,6 +75,11 @@ def index():
     return render_template("index.html")
 
 
+@app.route("/debug-view")
+def debug_view():
+    return render_template("debug.html")
+
+
 @app.route("/analyze", methods=["POST"])
 def analyze():
     if "image" not in request.files:
@@ -113,6 +118,38 @@ def render_score():
     notes_per_bar = int(data.get("notes_per_bar", 4))
     svg = notes_to_svg(notes, notes_per_bar=notes_per_bar)
     return svg, 200, {"Content-Type": "image/svg+xml; charset=utf-8"}
+
+
+@app.route("/debug", methods=["POST"])
+def debug_pipeline():
+    """
+    POST multipart/form-data com campo 'image' (ou JSON re-upload).
+    Retorna JSON com:
+      - result: mesmo dict do /analyze
+      - steps: lista de {label, description, image (base64 PNG)}
+    Permite ao usuário ver cada etapa do pipeline visualmente.
+    """
+    if "image" not in request.files:
+        return jsonify({"error": "Nenhuma imagem enviada."}), 400
+
+    file = request.files["image"]
+    if file.filename == "":
+        return jsonify({"error": "Nome de arquivo vazio."}), 400
+
+    image_bytes, err = _file_to_image_bytes(file.read(), file.filename)
+    if err:
+        return jsonify({"error": err}), 422
+
+    debug_data = analyze_image_debug(image_bytes)
+
+    # Embute também o SVG da partitura reconstruída no resultado
+    result = debug_data["result"]
+    if "error" not in result:
+        result["score_svg"] = notes_to_svg(result.get("notes", []))
+        annotated_b64 = _build_annotated_image(image_bytes, result)
+        result["annotated_image"] = annotated_b64
+
+    return jsonify(debug_data)
 
 
 @app.route("/export/midi", methods=["POST"])

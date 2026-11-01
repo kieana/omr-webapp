@@ -378,6 +378,33 @@ def _classify_duration(flags: int) -> str:
     return mapping.get(flags, f"Desconhecida ({flags} colchetes)")
 
 
+# ── Helpers de visualização ────────────────────────────────────────────────────
+
+def _img_to_b64(img: np.ndarray) -> str:
+    """Encoda uma imagem OpenCV (gray ou BGR) para PNG base64."""
+    _, buf = cv2.imencode(".png", img)
+    import base64
+    return base64.b64encode(buf).decode("utf-8")
+
+
+def _gray_to_bgr(img: np.ndarray) -> np.ndarray:
+    """Converte grayscale → BGR para poder desenhar em cores."""
+    if len(img.shape) == 2:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    return img.copy()
+
+
+def _scale_for_debug(img: np.ndarray, max_w: int = 1400) -> np.ndarray:
+    """Reduz a imagem se for muito larga, para não travar o browser."""
+    h, w = img.shape[:2]
+    if w <= max_w:
+        return img
+    scale = max_w / w
+    return cv2.resize(img, (max_w, int(h * scale)), interpolation=cv2.INTER_AREA)
+
+
+# ── Pipeline principal ─────────────────────────────────────────────────────────
+
 def analyze_image(image_bytes: bytes) -> dict:
     """
     Full OMR pipeline. Accepts raw image bytes.
@@ -385,56 +412,157 @@ def analyze_image(image_bytes: bytes) -> dict:
     staff_y (list of all detected line Y positions), spacing_px (float),
     total_notes (int).
     """
+    return _run_pipeline(image_bytes, debug=False)["result"]
+
+
+def analyze_image_debug(image_bytes: bytes) -> dict:
+    """
+    Same pipeline, but also returns a 'steps' list with one PNG (base64) per stage.
+    Each step: {"label": str, "description": str, "image": base64_png}
+    """
+    return _run_pipeline(image_bytes, debug=True)
+
+
+def _run_pipeline(image_bytes: bytes, debug: bool = False) -> dict:
+    """Core pipeline. When debug=True, captures annotated PNG at each stage."""
+    steps: list[dict] = []
+
+    def snap(label: str, description: str, img: np.ndarray) -> None:
+        if not debug:
+            return
+        small = _scale_for_debug(img)
+        steps.append({
+            "label": label,
+            "description": description,
+            "image": _img_to_b64(small),
+        })
+
     nparr = np.frombuffer(image_bytes, np.uint8)
     img_gray = cv2.imdecode(nparr, cv2.IMREAD_GRAYSCALE)
 
     if img_gray is None:
-        return {"error": "Não foi possível decodificar a imagem.", "notes": []}
+        return {"result": {"error": "Não foi possível decodificar a imagem.", "notes": []}, "steps": []}
 
-    # 1. Deskew via Hough
+    # ── Etapa 1: original (grayscale) ─────────────────────────────────────────
+    snap("1. Original", "Imagem carregada e convertida para escala de cinza.", img_gray)
+
+    # ── Etapa 2: deskew ───────────────────────────────────────────────────────
     img_gray = _deskew(img_gray)
+    snap("2. Alinhamento", "Rotação corrigida via Transformada de Hough (deskew).", img_gray)
 
-    # 2. Binarize
+    # ── Etapa 3: binarização ──────────────────────────────────────────────────
     img_bin = _binarize(img_gray)
+    snap("3. Binarização", "Limiarização adaptativa gaussiana — pixels de tinta=branco, fundo=preto.", img_bin)
 
-    # 3. Detect ALL staves on the page (multi-system support)
+    # ── Etapa 4: detecção de pautas ───────────────────────────────────────────
     staves = _detect_staves(img_bin)
-
-    # Flatten all staff line Y positions for the response / annotation
     all_staff_y: list[int] = [y for staff in staves for y in staff]
-
-    # Estimate median spacing across all staves
     spacing = _estimate_spacing(staves)
 
-    # 4. Compute per-system left-margin cutoff (skip clef + key + time signature area).
-    # We detect the first large horizontal gap in column density within each treble staff
-    # zone and use it as the note-content start.  Fall back to 10× spacing if not found.
+    vis_staves = _gray_to_bgr(img_gray)
+    for staff in staves:
+        for i, y in enumerate(staff):
+            color = (0, 200, 0)   # verde
+            cv2.line(vis_staves, (0, y), (vis_staves.shape[1], y), color, 1)
+        # marca os 5 pontos de cada pauta com um número de sistema
+        mid_x = vis_staves.shape[1] // 2
+        mid_y = (staff[0] + staff[4]) // 2
+        cv2.putText(vis_staves, f"pauta", (mid_x, mid_y),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 200, 0), 1, cv2.LINE_AA)
+    snap(
+        "4. Pautas detectadas",
+        f"{len(staves)} pauta(s) encontrada(s) — linhas verdes. "
+        f"Espaçamento médio: {spacing:.1f} px.",
+        vis_staves,
+    )
+
+    # ── Etapa 5: remoção de linhas ────────────────────────────────────────────
     notes_only = _remove_staff_lines(img_bin)
+    snap(
+        "5. Linhas removidas",
+        "Abertura morfológica horizontal subtrai as 5 linhas de cada pauta, "
+        "deixando apenas figuras musicais (cabeças, hastes, colchetes).",
+        notes_only,
+    )
+
+    # ── Etapa 6: margem esquerda ──────────────────────────────────────────────
     x_cutoff = _find_note_x_start(notes_only, staves, spacing)
+    vis_margin = _gray_to_bgr(img_gray)
+    cv2.line(vis_margin, (x_cutoff, 0), (x_cutoff, vis_margin.shape[0]),
+             (0, 0, 255), 2)   # vermelho
+    cv2.putText(vis_margin,
+                f"x_cutoff={x_cutoff}px  (clave+armadura+fórmula)",
+                (x_cutoff + 4, 20),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1, cv2.LINE_AA)
+    snap(
+        "6. Margem esquerda",
+        f"Linha vermelha em x={x_cutoff}px — tudo à esquerda (clave, armadura, "
+        f"fórmula de compasso) é ignorado. Notas só são buscadas à direita.",
+        vis_margin,
+    )
 
-    # 5. Detect note heads
-    note_heads = _detect_note_heads(notes_only, spacing)
+    # ── Etapa 7: candidatos a cabeça (antes dos filtros) ─────────────────────
+    note_heads_raw = _detect_note_heads(notes_only, spacing)
+    if debug:
+        vis_raw = _gray_to_bgr(img_gray)
+        for cx_r, cy_r, w_r, h_r in note_heads_raw:
+            cv2.circle(vis_raw, (cx_r, cy_r), max(5, int(spacing * 0.5)),
+                       (0, 140, 255), 1)   # laranja
+        snap(
+            "7. Candidatos (pré-filtro)",
+            f"{len(note_heads_raw)} blobs candidatos a cabeça de nota "
+            f"(círculos laranjas) — inclui ainda falsos positivos.",
+            vis_raw,
+        )
 
-    # 6. Deduplicate note heads that are within 8px horizontally and 8px vertically
-    #    (artefacts from the close/open operations can produce twin blobs for one head).
-    note_heads = _dedup_note_heads(note_heads)
+    # ── Etapa 8: após deduplicação ────────────────────────────────────────────
+    note_heads = _dedup_note_heads(note_heads_raw)
+    if debug:
+        vis_dedup = _gray_to_bgr(img_gray)
+        for cx_d, cy_d, w_d, h_d in note_heads:
+            cv2.circle(vis_dedup, (cx_d, cy_d), max(5, int(spacing * 0.5)),
+                       (255, 140, 0), 1)   # azul
+        snap(
+            "8. Após deduplicação",
+            f"{len(note_heads)} blobs restantes após remoção de duplicatas "
+            f"dentro de 8×8 px (círculos azuis).",
+            vis_dedup,
+        )
 
-    # 7. Build note list: assign each head to a staff, map pitch and duration
+    # ── Etapa 9: notas aceitas (com pitch e margem) ───────────────────────────
     detected_notes = []
+    vis_final = _gray_to_bgr(img_gray) if debug else None
+
+    # desenha margem na vis_final
+    if debug:
+        cv2.line(vis_final, (x_cutoff, 0), (x_cutoff, vis_final.shape[0]),
+                 (0, 0, 200), 1)
+
     for cx, cy, w, h in sorted(note_heads, key=lambda t: t[0]):
-        # Skip blobs in the left margin (clef / key sig / time sig area)
         if cx < x_cutoff:
+            if debug:
+                # descartado pela margem — cruz cinza
+                cv2.drawMarker(vis_final, (cx, cy), (160, 160, 160),
+                               cv2.MARKER_CROSS, 10, 1)
             continue
 
         staff, staff_idx = _assign_staff(cy, staves, spacing)
         if staff is None:
-            continue  # blob not near any staff — skip
+            if debug:
+                # sem pauta próxima — cruz vermelha
+                cv2.drawMarker(vis_final, (cx, cy), (0, 0, 200),
+                               cv2.MARKER_CROSS, 10, 1)
+            continue
 
         staff_spacing = (staff[4] - staff[0]) / 4.0
         pitch = _note_pitch(cy, staff, staff_idx, staff_spacing)
-        # Skip notes whose pitch resolved to out-of-range (text blobs above/below)
         if pitch in ("Acima da pauta", "Abaixo da pauta"):
+            if debug:
+                # pitch fora de alcance — triângulo amarelo
+                cv2.drawMarker(vis_final, (cx, cy), (0, 210, 255),
+                               cv2.MARKER_TRIANGLE_UP, 12, 1)
             continue
+
         flags = _count_flags(notes_only, cx, cy, w, h)
         duration = _classify_duration(flags)
 
@@ -446,10 +574,38 @@ def analyze_image(image_bytes: bytes) -> dict:
             "flags": int(flags),
         })
 
-    return {
+        if debug:
+            # nota aceita — círculo verde + label
+            cv2.circle(vis_final, (cx, cy), max(6, int(spacing * 0.55)),
+                       (0, 180, 0), 2)
+            cv2.putText(vis_final, pitch, (cx + 7, cy - 4),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.32, (0, 140, 0), 1, cv2.LINE_AA)
+
+    if debug:
+        # Legenda no canto superior esquerdo
+        legend = [
+            ("círculo verde = nota aceita",      (0, 180, 0)),
+            ("círculo laranja = candidato",       (0, 140, 255)),
+            ("× cinza = descartado (margem)",     (160, 160, 160)),
+            ("× vermelho = sem pauta próxima",    (0, 0, 200)),
+            ("▲ amarelo = pitch fora de alcance", (0, 210, 255)),
+        ]
+        for i, (text, color) in enumerate(legend):
+            cv2.putText(vis_final, text, (6, 16 + i * 14),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
+        snap(
+            "9. Notas aceitas",
+            f"{len(detected_notes)} nota(s) aceita(s) (verde). "
+            f"Descartados por margem (×cinza), sem pauta (×vermelho), "
+            f"pitch fora de alcance (▲amarelo).",
+            vis_final,
+        )
+
+    result = {
         "notes": detected_notes,
         "staff_found": len(staves) >= 1,
         "staff_y": all_staff_y,
         "spacing_px": round(spacing, 2),
         "total_notes": len(detected_notes),
     }
+    return {"result": result, "steps": steps}

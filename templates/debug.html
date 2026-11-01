@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OMR — Diagnóstico do Pipeline</title>
+  <style>
+    :root {
+      --bg: #0f1117; --surface: #1a1d27; --border: #2e3147;
+      --accent: #5b8cf8; --text: #e2e4f0; --muted: #7a7f9a;
+      --success: #34c77b; --error: #e25b5b; --warn: #e2b45b;
+      --radius: 10px;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", system-ui, sans-serif;
+      font-size: 14px; line-height: 1.6;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── Header ── */
+    header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 1rem 1.4rem; display: flex; align-items: center;
+      gap: 1rem; flex-wrap: wrap;
+    }
+    header h1 { font-size: 1.1rem; font-weight: 700; }
+    header p  { font-size: .82rem; color: var(--muted); }
+    .back-link { font-size: .85rem; margin-left: auto; }
+
+    /* ── Layout ── */
+    main { max-width: 1200px; margin: 0 auto; padding: 1.2rem 1rem; }
+
+    /* ── Upload zone ── */
+    #upload-section { margin-bottom: 1.4rem; }
+    #drop-zone {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 2rem 1rem; text-align: center; cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    #drop-zone:hover, #drop-zone.dragover {
+      border-color: var(--accent); background: rgba(91,140,248,.05);
+    }
+    #drop-zone svg { width: 40px; height: 40px; color: var(--muted); margin-bottom: .6rem; }
+    #drop-zone .hint { font-size: .8rem; color: var(--muted); margin-top: .3rem; }
+    #drop-zone .link { color: var(--accent); }
+    #analyze-btn {
+      display: block; width: 100%; margin-top: .8rem;
+      padding: .75rem; border: none; border-radius: var(--radius);
+      background: var(--accent); color: #fff; font-size: .95rem;
+      font-weight: 600; cursor: pointer; transition: opacity .2s;
+    }
+    #analyze-btn:disabled { opacity: .4; cursor: not-allowed; }
+    #analyze-btn:not(:disabled):hover { opacity: .88; }
+
+    /* ── Loading ── */
+    #loading { text-align: center; padding: 2rem; }
+    .spinner {
+      width: 36px; height: 36px; border: 3px solid var(--border);
+      border-top-color: var(--accent); border-radius: 50%;
+      animation: spin .7s linear infinite; margin: 0 auto .8rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Error ── */
+    #error-box {
+      background: rgba(226,91,91,.1); border: 1px solid var(--error);
+      color: var(--error); border-radius: var(--radius);
+      padding: .8rem 1rem; margin-bottom: 1rem;
+    }
+
+    /* ── Summary bar ── */
+    #summary-bar {
+      display: flex; gap: .8rem; flex-wrap: wrap;
+      margin-bottom: 1.4rem;
+    }
+    .stat {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .6rem .9rem;
+      display: flex; flex-direction: column; min-width: 120px;
+    }
+    .stat-value { font-size: 1.3rem; font-weight: 700; color: var(--accent); }
+    .stat-label { font-size: .75rem; color: var(--muted); }
+
+    /* ── Pipeline steps ── */
+    #steps-section h2 { font-size: 1rem; font-weight: 700; margin-bottom: 1rem; }
+
+    .step-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 1.2rem;
+      overflow: hidden;
+    }
+    .step-header {
+      display: flex; align-items: center; gap: .7rem;
+      padding: .7rem 1rem; cursor: pointer;
+      user-select: none;
+    }
+    .step-header:hover { background: rgba(255,255,255,.03); }
+    .step-num {
+      background: var(--accent); color: #fff;
+      font-size: .72rem; font-weight: 700;
+      border-radius: 50%; width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .step-title { font-weight: 600; font-size: .92rem; }
+    .step-desc  { font-size: .8rem; color: var(--muted); margin-left: auto; max-width: 55%; text-align: right; }
+    .step-arrow { color: var(--muted); font-size: .8rem; flex-shrink: 0; transition: transform .2s; }
+    .step-card.open .step-arrow { transform: rotate(90deg); }
+
+    .step-body { display: none; border-top: 1px solid var(--border); padding: .8rem; }
+    .step-card.open .step-body { display: block; }
+
+    .step-body p { font-size: .83rem; color: var(--muted); margin-bottom: .7rem; }
+    .step-img-wrap {
+      overflow-x: auto; background: #111; border-radius: 6px;
+    }
+    .step-img-wrap img { display: block; max-width: 100%; height: auto; }
+
+    /* ── Score SVG ── */
+    #score-section { margin-top: 1.6rem; }
+    #score-section h2 { font-size: 1rem; font-weight: 700; margin-bottom: .6rem; }
+    #score-section p { font-size: .83rem; color: var(--muted); margin-bottom: .8rem; }
+    .score-scroll {
+      overflow-x: auto; background: #fff;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 1rem;
+    }
+    .score-scroll svg { display: block; }
+
+    /* ── Notes table ── */
+    #table-section { margin-top: 1.6rem; }
+    #table-section h2 { font-size: 1rem; font-weight: 700; margin-bottom: .7rem; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: .83rem; }
+    th { background: var(--surface); padding: .45rem .7rem; text-align: left;
+         border-bottom: 1px solid var(--border); color: var(--muted); font-weight: 600; }
+    td { padding: .4rem .7rem; border-bottom: 1px solid var(--border); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,.025); }
+
+    /* ── Progressão ── */
+    #progress-bar {
+      height: 4px; background: var(--border); border-radius: 2px;
+      margin-bottom: 1.2rem; overflow: hidden;
+    }
+    #progress-fill {
+      height: 100%; background: var(--accent);
+      width: 0%; transition: width .3s;
+    }
+    #progress-label { font-size: .8rem; color: var(--muted); margin-bottom: .5rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>🔬 Diagnóstico do Pipeline OMR</h1>
+      <p>Veja o que acontece em cada etapa da análise — do pixel à nota.</p>
+    </div>
+    <a class="back-link" href="/">← Voltar à análise</a>
+  </header>
+
+  <main>
+    <!-- Upload -->
+    <section id="upload-section">
+      <div id="drop-zone" role="button" tabindex="0"
+           aria-label="Arraste uma imagem de partitura">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>Arraste uma partitura aqui<br/>ou <span class="link">clique para selecionar</span></p>
+        <p class="hint">PDF · PNG · JPG · WEBP · BMP · TIFF — máx. 64 MB</p>
+        <input type="file" id="file-input"
+               accept="image/*,.pdf,.bmp,.tiff,.tif,.gif,.ppm,.pgm,.pbm" hidden />
+      </div>
+      <button id="analyze-btn" disabled>🔬 Analisar e mostrar etapas</button>
+    </section>
+
+    <!-- Loading -->
+    <div id="loading" hidden>
+      <div class="spinner"></div>
+      <p id="progress-label">Iniciando…</p>
+      <div id="progress-bar"><div id="progress-fill"></div></div>
+      <p style="color:var(--muted);font-size:.82rem">
+        O modo debug é mais lento — cada etapa gera uma imagem anotada.
+      </p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" hidden></div>
+
+    <!-- Results -->
+    <div id="results" hidden>
+
+      <!-- Summary -->
+      <div id="summary-bar">
+        <div class="stat">
+          <span class="stat-value" id="stat-notes">0</span>
+          <span class="stat-label">Notas detectadas</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-staves">—</span>
+          <span class="stat-label">Pautas encontradas</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-spacing">—</span>
+          <span class="stat-label">Espaçamento (px)</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-steps">0</span>
+          <span class="stat-label">Etapas capturadas</span>
+        </div>
+      </div>
+
+      <!-- Pipeline steps -->
+      <section id="steps-section">
+        <h2>🪜 Etapas do Pipeline</h2>
+        <div id="steps-container"></div>
+      </section>
+
+      <!-- Reconstructed score -->
+      <section id="score-section" hidden>
+        <h2>🎼 Partitura Reconstruída</h2>
+        <p>O que o pipeline "viu" — compare com a imagem original acima.</p>
+        <div class="score-scroll" id="score-svg-wrap"></div>
+      </section>
+
+      <!-- Notes table -->
+      <section id="table-section" hidden>
+        <h2>📋 Tabela de Notas Detectadas</h2>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th><th>Pitch</th><th>Duração</th>
+                <th>Flags</th><th>X (px)</th><th>Y (px)</th>
+              </tr>
+            </thead>
+            <tbody id="notes-tbody"></tbody>
+          </table>
+        </div>
+      </section>
+
+    </div><!-- /results -->
+  </main>
+
+  <script>
+  (function () {
+    "use strict";
+
+    const dropZone    = document.getElementById("drop-zone");
+    const fileInput   = document.getElementById("file-input");
+    const analyzeBtn  = document.getElementById("analyze-btn");
+    const loading     = document.getElementById("loading");
+    const errorBox    = document.getElementById("error-box");
+    const results     = document.getElementById("results");
+    const stepsWrap   = document.getElementById("steps-container");
+    const scoreSvgWrap= document.getElementById("score-svg-wrap");
+    const notesTbody  = document.getElementById("notes-tbody");
+    const progressFill= document.getElementById("progress-fill");
+    const progressLbl = document.getElementById("progress-label");
+
+    let selectedFile = null;
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function show(el) { el.hidden = false; }
+    function hide(el) { el.hidden = true;  }
+
+    function showError(msg) {
+      errorBox.textContent = "⚠ " + msg;
+      show(errorBox);
+    }
+
+    function setProgress(pct, label) {
+      progressFill.style.width = pct + "%";
+      if (label) progressLbl.textContent = label;
+    }
+
+    // ── File selection ────────────────────────────────────────────────────────
+    const ACCEPTED = new Set([
+      "pdf","jpg","jpeg","png","webp","bmp","tiff","tif","gif","ppm","pgm","pbm",
+    ]);
+
+    function isAccepted(file) {
+      if (file.type.startsWith("image/") || file.type === "application/pdf") return true;
+      return ACCEPTED.has(file.name.split(".").pop().toLowerCase());
+    }
+
+    function handleFile(file) {
+      if (!file || !isAccepted(file)) {
+        showError("Formato não suportado. Use PDF, PNG, JPG, WEBP, BMP, TIFF ou similar.");
+        return;
+      }
+      selectedFile = file;
+      hide(errorBox);
+      analyzeBtn.disabled = false;
+    }
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") fileInput.click(); });
+    fileInput.addEventListener("change", () => { if (fileInput.files.length) handleFile(fileInput.files[0]); });
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("dragover"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+    dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("dragover"); handleFile(e.dataTransfer.files[0]); });
+
+    // ── Build step card ───────────────────────────────────────────────────────
+    function buildStepCard(step, index) {
+      const card = document.createElement("div");
+      card.className = "step-card open";   // começa aberto
+
+      const header = document.createElement("div");
+      header.className = "step-header";
+      header.innerHTML = `
+        <span class="step-num">${index + 1}</span>
+        <span class="step-title">${step.label}</span>
+        <span class="step-desc">${step.description}</span>
+        <span class="step-arrow">▶</span>
+      `;
+      header.addEventListener("click", () => card.classList.toggle("open"));
+
+      const body = document.createElement("div");
+      body.className = "step-body";
+      body.innerHTML = `<p>${step.description}</p>`;
+
+      const wrap = document.createElement("div");
+      wrap.className = "step-img-wrap";
+      const img = document.createElement("img");
+      img.src = "data:image/png;base64," + step.image;
+      img.alt = step.label;
+      img.loading = "lazy";
+      wrap.appendChild(img);
+      body.appendChild(wrap);
+
+      card.appendChild(header);
+      card.appendChild(body);
+      return card;
+    }
+
+    // ── Render results ────────────────────────────────────────────────────────
+    function renderResults(data) {
+      const r = data.result || {};
+      const steps = data.steps || [];
+
+      // Summary
+      document.getElementById("stat-notes").textContent   = r.total_notes ?? 0;
+      document.getElementById("stat-staves").textContent  = r.staff_found
+        ? (r.staff_y ? (r.staff_y.length / 5) + " pauta(s)" : "✓") : "✗ Não";
+      document.getElementById("stat-spacing").textContent = r.spacing_px > 0
+        ? r.spacing_px + " px" : "—";
+      document.getElementById("stat-steps").textContent   = steps.length;
+
+      // Pipeline steps
+      stepsWrap.innerHTML = "";
+      steps.forEach((step, i) => {
+        setProgress(Math.round((i + 1) / steps.length * 100),
+                    `Renderizando etapa ${i + 1} de ${steps.length}…`);
+        stepsWrap.appendChild(buildStepCard(step, i));
+      });
+
+      // Score SVG
+      if (r.score_svg) {
+        scoreSvgWrap.innerHTML = r.score_svg;
+        show(document.getElementById("score-section"));
+      }
+
+      // Notes table
+      const notes = r.notes || [];
+      notesTbody.innerHTML = "";
+      if (notes.length) {
+        notes.forEach((n, i) => {
+          const tr = document.createElement("tr");
+          tr.innerHTML = `
+            <td>${i + 1}</td>
+            <td><strong>${n.pitch}</strong></td>
+            <td>${n.duration}</td>
+            <td>${n.flags}</td>
+            <td>${n.position_x}</td>
+            <td>${n.position_y}</td>
+          `;
+          notesTbody.appendChild(tr);
+        });
+        show(document.getElementById("table-section"));
+      }
+
+      show(results);
+    }
+
+    // ── Analyze ───────────────────────────────────────────────────────────────
+    analyzeBtn.addEventListener("click", async () => {
+      if (!selectedFile) return;
+
+      hide(errorBox);
+      hide(results);
+      show(loading);
+      analyzeBtn.disabled = true;
+      setProgress(0, "Enviando imagem ao servidor…");
+
+      const formData = new FormData();
+      formData.append("image", selectedFile);
+
+      // Fake progress while waiting (server-side takes a few seconds)
+      let fake = 5;
+      const fakeTimer = setInterval(() => {
+        fake = Math.min(fake + 3, 85);
+        setProgress(fake, "Processando pipeline (pode levar alguns segundos)…");
+      }, 400);
+
+      try {
+        const response = await fetch("/debug", { method: "POST", body: formData });
+        clearInterval(fakeTimer);
+        setProgress(95, "Recebendo dados…");
+
+        const data = await response.json();
+        if (!response.ok || data.error) {
+          showError((data.error || data.result?.error) || "Erro ao processar.");
+          return;
+        }
+        setProgress(100, "Concluído!");
+        renderResults(data);
+      } catch (err) {
+        clearInterval(fakeTimer);
+        showError("Falha na comunicação com o servidor: " + err.message);
+      } finally {
+        hide(loading);
+        analyzeBtn.disabled = false;
+      }
+    });
+  })();
+  </script>
+</body>
+</html>
