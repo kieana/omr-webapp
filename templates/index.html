@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OMR — Reconhecimento Óptico de Partitura</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header>
+    <h1>🎼 OMR Determinístico</h1>
+    <p>Reconhecimento de partituras por matemática pura — sem IA, sem nuvem.</p>
+  </header>
+
+  <main>
+    <!-- Upload area -->
+    <section id="upload-section">
+      <div id="drop-zone" role="button" tabindex="0"
+           aria-label="Área de upload. Clique ou arraste uma imagem de partitura.">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <p>Arraste uma imagem de partitura aqui<br/>ou <span class="link">clique para selecionar</span></p>
+        <p class="hint">PNG, JPG, WEBP — máx. 16 MB</p>
+        <input type="file" id="file-input" accept="image/*" hidden />
+      </div>
+      <button id="analyze-btn" disabled>Analisar Partitura</button>
+    </section>
+
+    <!-- Preview -->
+    <section id="preview-section" hidden>
+      <h2>Imagem Enviada</h2>
+      <div class="image-wrapper">
+        <img id="preview-img" src="" alt="Pré-visualização da partitura" />
+      </div>
+    </section>
+
+    <!-- Loading -->
+    <div id="loading" hidden>
+      <div class="spinner"></div>
+      <p>Processando com Transformada de Hough e Morfologia Matemática…</p>
+    </div>
+
+    <!-- Error -->
+    <div id="error-box" hidden role="alert"></div>
+
+    <!-- Results -->
+    <section id="results-section" hidden>
+      <h2>Resultados da Análise</h2>
+
+      <div id="stats-bar">
+        <div class="stat">
+          <span class="stat-value" id="stat-notes">0</span>
+          <span class="stat-label">Notas detectadas</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-staff">—</span>
+          <span class="stat-label">Pauta encontrada</span>
+        </div>
+        <div class="stat">
+          <span class="stat-value" id="stat-spacing">—</span>
+          <span class="stat-label">Espaçamento (px)</span>
+        </div>
+      </div>
+
+      <!-- Export status (automático) -->
+      <div id="export-status" hidden></div>
+
+      <!-- Annotated image -->
+      <div id="annotated-wrapper" hidden>
+        <h3>Imagem Anotada</h3>
+        <div class="image-wrapper">
+          <img id="annotated-img" src="" alt="Partitura anotada com notas detectadas" />
+        </div>
+      </div>
+
+      <!-- Notes table -->
+      <div id="table-wrapper" hidden>
+        <h3>Tabela de Notas</h3>
+        <div class="table-scroll">
+          <table id="notes-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Posição X</th>
+                <th>Posição Y</th>
+                <th>Altura</th>
+                <th>Duração</th>
+                <th>Colchetes</th>
+              </tr>
+            </thead>
+            <tbody id="notes-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="no-notes-msg" hidden>
+        <p>Nenhuma nota foi detectada. Tente com uma imagem de maior resolução ou contraste.</p>
+      </div>
+
+      <!-- Nova partitura -->
+      <div id="new-file-bar">
+        <button id="new-file-btn">↩ Nova Partitura</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>
+      Pipeline: Transformada de Hough (1962) · Morfologia Matemática (1960s) · Momentos de Hu (1962) · Projeções de Perfil
+    </p>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
