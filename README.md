@@ -12,7 +12,7 @@ Este projeto nasceu em um **Motorola Moto E22**, rodando **Termux no Android**, 
 
 ### O que faz
 
-Dado um **JPG/PNG de uma partitura** (até 16 MB), o OMR WebApp:
+Dado um **PDF ou imagem de partitura** (até 64 MB), o OMR WebApp:
 
 1. **Binariza** a imagem com limiarização adaptativa (lida com sombras e iluminação irregular)
 2. **Detecta as pautas** via Transformada de Hough + agrupamento por sistema de 5 linhas
@@ -69,18 +69,20 @@ Acesse **http://localhost:5000** no navegador.
 | `opencv-python-headless >= 4.9` | Visão computacional |
 | `numpy >= 1.26` | Operações matriciais |
 | `music21 >= 9.1` | Exportação MIDI / MusicXML |
+| `pymupdf >= 1.24` | Conversão PDF → imagem |
 
 ### API
 
 | Rota | Método | Descrição |
 |---|---|---|
 | `/` | `GET` | Interface web |
-| `/analyze` | `POST` | Analisa imagem → JSON com notas, pautas e imagem anotada |
+| `/analyze` | `POST` | Analisa PDF ou imagem → JSON com notas, pautas e imagem anotada |
 | `/export/midi` | `POST` | Converte notas detectadas → arquivo `.mid` |
 | `/export/musicxml` | `POST` | Converte notas detectadas → arquivo `.musicxml` |
 
 ### Limitações conhecidas
 
+- PDFs de múltiplas páginas: apenas a **primeira página** é analisada
 - Funciona melhor com partituras corais em **Dó maior / Ré maior** com pautas bem definidas
 - Duração das notas é aproximada (baseada em colchetes; mínimas e semibreves não são diferenciadas de semínimas sem informação de feixe)
 - Acidentes ocidentais (sustenidos/bemóis individuais) ainda não são detectados
@@ -95,7 +97,7 @@ This project was born on a **Motorola Moto E22**, running **Termux on Android**,
 
 ### What it does
 
-Given a **JPG/PNG of a music score** (up to 16 MB), OMR WebApp:
+Given a **PDF or image of a music score** (up to 64 MB), OMR WebApp:
 
 1. **Binarizes** the image with adaptive thresholding (handles shadows and uneven lighting)
 2. **Detects staves** via Hough Transform + 5-line system grouping
@@ -152,18 +154,20 @@ Open **http://localhost:5000** in your browser.
 | `opencv-python-headless >= 4.9` | Computer vision |
 | `numpy >= 1.26` | Matrix operations |
 | `music21 >= 9.1` | MIDI / MusicXML export |
+| `pymupdf >= 1.24` | PDF → image conversion |
 
 ### API
 
 | Route | Method | Description |
 |---|---|---|
 | `/` | `GET` | Web UI |
-| `/analyze` | `POST` | Analyze image → JSON with notes, staves, and annotated image |
+| `/analyze` | `POST` | Analyze PDF or image → JSON with notes, staves, and annotated image |
 | `/export/midi` | `POST` | Convert detected notes → `.mid` file |
 | `/export/musicxml` | `POST` | Convert detected notes → `.musicxml` file |
 
 ### Known limitations
 
+- Multi-page PDFs: only the **first page** is analysed
 - Works best with choral scores in **C major / D major** with well-defined staves
 - Note duration is approximate (flag-based; half notes and whole notes are not distinguished from quarter notes without beam information)
 - Individual accidentals (sharps/flats) are not yet detected

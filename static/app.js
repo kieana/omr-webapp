@@ -122,10 +122,23 @@
     }
   }
 
+  // ── Tipos aceitos (extensões + MIME) ──────────────────────────────────────
+  const ACCEPTED_EXTS = new Set([
+    "pdf","jpg","jpeg","png","webp","bmp","tiff","tif",
+    "gif","ppm","pgm","pbm","sr","ras",
+  ]);
+
+  function _isAccepted(file) {
+    if (file.type === "application/pdf") return true;
+    if (file.type.startsWith("image/"))  return true;
+    const ext = file.name.split(".").pop().toLowerCase();
+    return ACCEPTED_EXTS.has(ext);
+  }
+
   // ── File selection ────────────────────────────────────────────────────────
   function handleFile(file) {
-    if (!file || !file.type.startsWith("image/")) {
-      showError("Por favor, selecione um arquivo de imagem válido (PNG, JPG ou WEBP).");
+    if (!file || !_isAccepted(file)) {
+      showError("Formato não suportado. Use PDF, PNG, JPG, WEBP, BMP, TIFF, GIF ou similares.");
       return;
     }
 
@@ -133,12 +146,20 @@
     clearError();
     analyzeBtn.disabled = false;
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      previewImg.src = e.target.result;
+    // PDF não tem preview nativo no <img>; mostra placeholder
+    if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {
+      previewImg.src = "";
+      previewImg.alt = `📄 PDF selecionado: ${file.name}`;
       show(previewSec);
-    };
-    reader.readAsDataURL(file);
+    } else {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        previewImg.src = e.target.result;
+        previewImg.alt = "Pré-visualização da partitura";
+        show(previewSec);
+      };
+      reader.readAsDataURL(file);
+    }
 
     hide(resultsSec);
   }

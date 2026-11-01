@@ -29,7 +29,44 @@ import cv2
 import numpy as np
 
 app = Flask(__name__)
-app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024  # 16 MB max upload
+app.config["MAX_CONTENT_LENGTH"] = 64 * 1024 * 1024  # 64 MB max upload
+
+# ── Tipos de arquivo suportados ────────────────────────────────────────────────
+_IMAGE_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tiff", ".tif",
+    ".gif", ".ppm", ".pgm", ".pbm", ".sr", ".ras",
+}
+_PDF_EXTENSION = ".pdf"
+
+
+def _file_to_image_bytes(file_bytes: bytes, filename: str) -> tuple[bytes, str]:
+    """
+    Converte qualquer arquivo suportado para bytes de imagem PNG prontos para
+    o pipeline do OpenCV.  Retorna (image_bytes, error_str).
+    PDF: renderiza a primeira página com DPI=200 via PyMuPDF.
+    Imagens: passa direto (OpenCV aceita todos os formatos listados).
+    """
+    import os
+    ext = os.path.splitext(filename.lower())[1]
+
+    if ext == _PDF_EXTENSION:
+        try:
+            import fitz  # PyMuPDF
+            doc = fitz.open(stream=file_bytes, filetype="pdf")
+            if doc.page_count == 0:
+                return b"", "O PDF não contém páginas."
+            page = doc.load_page(0)
+            mat = fitz.Matrix(200 / 72, 200 / 72)   # 200 DPI
+            pix = page.get_pixmap(matrix=mat, colorspace=fitz.csGRAY)
+            return pix.tobytes("png"), ""
+        except Exception as exc:
+            return b"", f"Falha ao converter PDF: {exc}"
+
+    if ext not in _IMAGE_EXTENSIONS and not ext:
+        # tenta mesmo assim — OpenCV decidirá
+        pass
+
+    return file_bytes, ""
 
 
 @app.route("/")
@@ -46,7 +83,9 @@ def analyze():
     if file.filename == "":
         return jsonify({"error": "Nome de arquivo vazio."}), 400
 
-    image_bytes = file.read()
+    image_bytes, err = _file_to_image_bytes(file.read(), file.filename)
+    if err:
+        return jsonify({"error": err}), 422
     result = analyze_image(image_bytes)
 
     if "error" in result:
@@ -109,7 +148,10 @@ def _extract_notes_from_request():
     if file.filename == "":
         return jsonify({"error": "Nome de arquivo vazio."}), 400
 
-    result = analyze_image(file.read())
+    image_bytes, err = _file_to_image_bytes(file.read(), file.filename)
+    if err:
+        return jsonify({"error": err}), 422
+    result = analyze_image(image_bytes)
     if "error" in result:
         return jsonify(result), 422
 
